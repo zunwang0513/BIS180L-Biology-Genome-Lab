@@ -1,0 +1,2 @@
+URL to the weekend plan of our group
+https://github.com/zunwang0513/Intro-to-git
