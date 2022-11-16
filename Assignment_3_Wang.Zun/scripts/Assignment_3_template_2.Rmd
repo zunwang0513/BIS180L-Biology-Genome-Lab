@@ -1,0 +1,203 @@
+---
+title: "Assignment 3, part 2"
+output: 
+  html_document: 
+    keep_md: yes
+---
+
+__Name:__ Zun Wang
+
+__Student ID:__ 915109847
+
+```{r}
+library(tidyverse)
+headers <- readLines("../input/blastout.mega.WS11.tsv.gz", n = 4)
+headers <- headers[4]
+headers
+headers <- headers %>%
+str_remove("# Fields: ") %>%
+str_split(", ") %>%
+unlist() %>%
+make.names() %>%
+str_replace(fixed(".."), ".") %>%
+str_replace("X.identity", "pct.identity")
+headers
+megaWS11 <- read_tsv("../input/blastout.mega.WS11.tsv.gz", col_names=headers, comment="#")
+megaWS28 <- read_tsv("../input/blastout.mega.WS28.tsv.gz", col_names=headers, comment="#")
+blastnWS11 <- read_tsv("../input/blastout.task_blastn.WS11.tsv.gz", col_names=headers, comment="#")
+dc_megaWS11 <- read_tsv("../input/blastout.task_dc-megablast.WS11.tsv.gz", col_names=headers, comment="#")
+tblastx <- read_tsv("../input/blastout.tblastx.tsv.gz", col_names=headers, comment="#")
+head(blastnWS11)
+summary(blastnWS11)
+blast.results <- bind_rows(list(megaWS11=megaWS11,
+                                megaWS28=megaWS28, 
+                                blastnWS11=blastnWS11, 
+                                dc_megaWS11=dc_megaWS11,
+                                tblastx=tblastx), 
+                           .id="strategy")
+head(blast.results)
+```
+
+**Exercise 8:** What are the total number of hits for each search strategy? __hint:__ use `group_by()` and `summarize_()`. You do not need to type out the results so long as your knitted markdown has the answer output in a table.  You should need 1 to 3 lines of code for this and you should not need to run separate commands for the different search strategies.
+```{r}
+blast.results %>%
+  group_by(strategy) %>%
+  summarize(hit.count=n())
+```
+
+**Exercise 9:** For each search strategy, calculate:
+* Average alignment length
+* Maximum alignment length
+* Total alignment length (sum of all alignment lengths)
+* Average percent identity  
+You do not need to type out the results so long as your knitted markdown has the answer output in a table.
+```{r}
+exercise9 <- blast.results %>%
+  group_by(strategy) %>%
+  summarize(avg.length = mean(alignment.length),
+            max.length = max(alignment.length),
+            totl.length = sum(alignment.length),
+            avg.id = mean(pct.identity)
+            )
+exercise9
+```
+
+
+**Exercise 10**: Explain the logic and function for each line of the code used to create `uniq.blast.results` above.  Why was `arrange` used and why with those arguments?  what is duplicated doing (__hint__, use `?duplicated` to see the help file), and why is `!` used in that line?
+
+```{r}
+uniq.blast.results <- blast.results %>% #store the results below to uniq.blast.results
+    group_by(strategy, subject.acc.ver) %>% #group by both strategy and subject.acc.ver
+    arrange(desc(alignment.length)) %>%  #align with order of ailgnment length from longest to shortest
+    filter(!duplicated(subject.acc.ver)) #filter out duplicated ones with same subject.acc.ver
+uniq.blast.results
+```
+
+**Exercise 11:** Repeat the summary from Exercise 9, but now on the unique hits.  How do the results fit with your understanding of these different search strategies?
+```{r}
+exercise11 <- blast.results %>%
+  group_by(strategy) %>%
+  filter(!duplicated(subject.acc.ver)) %>%
+  summarize(avg.length = mean(alignment.length),
+            max.length = max(alignment.length),
+            totl.length = sum(alignment.length),
+            avg.id = mean(pct.identity),
+            hit = n()
+            )
+exercise11
+#Between mega resuilts, 28 is showed to have longer average length but less total length so less accurate than mega11.
+#megablast generally have higher identity percentage, showing megablast's advantage on longer sequences
+#The results between blastn and de_mega is very small
+#tblastx is the one that uses aa sequence so it has least average length.
+```
+
+**Exercise 12**: For the full `blast.results` set (not the unique ones), answer the following questions for each search strategy.  You do not need to type out the results so long as your knitted markdown has the answer output in a table.
+
+* What proportion of hits have an e-value of 0?
+* What proportion of hits have a percent identity > 50?
+* What proportion of hits have an E-value of 0 _and_ have a percent identity less than 50?
+```{r}
+exercise12 <- blast.results %>%
+  group_by(strategy)%>%
+  summarize(pe0 = mean(evalue == 0),pidtover50 = mean(pct.identity > 50),p3 = mean(evalue==0 & pct.identity < 50))
+exercise12
+```
+
+__hint__ There are at least two ways to answer the question above, one is using `filter()` and then checking the number of rows of the result.  The second takes advantage of the fact that the logical value TRUE also has the numeric value of 1, whereas false = 0.  So, for example, if we wanted to count the numbers > 5 in the sequence of numbers from 1:10.  If you take the second strategy you should only need to do one summarize statement.
+
+
+**Exercise 13**: Why do you think `tblastx` so different?
+```{r}
+#tblastn uses translated amino acid sequence so it has least number of hits.
+```
+
+**Exercise 14:** Use the commands above to create the data frame below from `uniq.blast.results` and store it in an object called `upset.table`.  Only the first 6 lines are shown.
+
+```{r}
+install.packages("UpSetR")
+library(UpSetR)
+```
+```{r}
+upset.table <- uniq.blast.results %>%
+  select(subject.acc.ver,strategy)%>%
+  table()%>%
+  as.data.frame.matrix()
+upset.table
+upset(upset.table)
+```
+**Exercise 15:**_  Interpret the plot: overall do these strategies generally find the same sequences?  What strategies are outliers?  How does that relate to what you know about the different search strategies.
+```{r}
+#Overal for the 4 strategies below, they found almost the same sequences, but megaW28 is the outlier, maybe because 28 is too big a number for too coarse search of megablast, its result is inaccurate.
+```
+**Exercise 16:** Let's investigate those errors.  Use the [ ] to view the offending rows of `uniq.blastn`.  what went wrong?
+```{r}
+uniq.blastn <- uniq.blast.results %>%
+    ungroup() %>%
+    filter(strategy=="blastnWS11",
+           str_detect(subject.title, "complete genome"))
+head(uniq.blastn)
+uniq.blastn %>% pull(subject.title) %>% head()
+uniq.blastn <- uniq.blastn%>%
+    separate(subject.title,
+             into=c("acc", "isolate", "complete", "name", "country", "host"),
+             remove = FALSE, 
+             sep="\\|")
+#Expected 6 titles from the database, but for some rows the titles are not completed, not following this format, so there are errors.
+
+```
+**Exercise 17:** Let's delete those rows  Use the [ ] to remove the offending rows of `uniq.blastn`.  Put the result in a new object called `filtered.blastn`
+```{r}
+filtered.blastn <- uniq.blastn[-c(1678,1653,1714),]
+
+filtered.blastn <- filtered.blastn %>%
+    mutate_all(function(x) ifelse(x=="", NA, x))
+
+filtered.blastn <- na.omit(filtered.blastn)
+```
+
+**Exercise 18:** Look back to the code where we created `uniq.blast.results` Use a similar strategy to retain the entry with longest alignment length for each combination of name, country, and host
+
+```{r}
+uniq.blast.results2_temp <- filtered.blastn %>% 
+    group_by(name,country,host) %>% 
+    arrange(desc(alignment.length))%>%
+    filter(alignment.length==max(alignment.length))%>%
+    filter(!duplicated(name))
+uniq.blast.results2_temp
+
+```
+**Exercise 19:** Finally, let's retain those with an alignment length >= 5000
+```{r}
+uniq.blast.result2 <- uniq.blast.results2_temp %>%
+  filter(alignment.length>=5000)
+uniq.blast.result2
+```
+
+**Exercise 20:** Use [ %in% ] to subset the ncbi seqs to retain only those present in `filtered.blastn` __Hint:__ you will want to use the `subject.title` column from `filtered.blastn` and you can get the sequence names of the fasta file with `names(ncbi.seqs)`.  Put the resulting sequences in an object `selected.seqs`.  You should have 102 sequences.
+```{r}
+library(Biostrings)
+```
+```{r}
+ncbi.seqs <- readDNAStringSet("../input/ncbi_virus_110119_2.txt")
+ncbi.seqs
+```
+```{r}
+selected.seq <- ncbi.seqs[names(ncbi.seqs) %in% uniq.blast.result2$subject.title]
+selected.seq
+```
+
+**Exercise 21:** Read in the patient seq file, extract the Seq_H sequence, and then add it to the `selected.seqs` object using `c()`.  The new sequence object should have 103 sequences. Write it out to a fasta file using the function `writeXStringSet()`, naming the resulting file "selected_viral_seqs.fa".
+
+```{r}
+patient.seqs <- readDNAStringSet("../input/patient_viral.txt")
+patient.seqs
+```
+```{r}
+selected.seq <- c(selected.seq,patient.seqs[8])
+selected.seq
+```
+**Turning in the assignment**
+
+* Click the knit button at the top of the screen to create an html.  Check it to make sure you are happy with its content.
+* add your .Rmd, .md and .html files and your figures.../ folder to the repository and commit the changes.
+* push the changes
