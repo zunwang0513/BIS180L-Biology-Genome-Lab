@@ -1,0 +1,389 @@
+---
+title: "Assignment 6 RNAseqPart 1"
+output: 
+  html_document: 
+    keep_md: yes
+    df_print: paged
+---
+
+__Name:__ Zun Wang
+__Student ID:__ 915109847
+
+**Always include the code or commands used to answer the exercises**
+
+**When done, knit an html and push both this .Rmd and the .html to your github.  **
+```{r}
+library(devtools)
+install_github("gadenbuie/regexplain")
+```
+
+```{r}
+library(tidyverse)
+library(rtracklayer)
+```
+```{r}
+gff <- import.gff("/home/ubuntu/LAB3/Assignment_5_Wang.Zun/input/Brapa_reference/Brapa_gene_v1.5.gff")
+gff #take a look
+
+#create a column "gene_id" that contains the gene name for every entry
+gff$gene_id <- ifelse(is.na(gff$ID),gff$Parent,gff$ID)
+
+export(gff,"/home/ubuntu/LAB3/Assignment_5_Wang.Zun/input/Brapa_reference/Brapa_gene_v1.5.gtf",format="gtf")
+```
+
+__Exercise 0:__ Paste your code from the Stringr/RegEx tutorial here.  Don't worry about commenting them, just put them in the code chunk.
+
+```{r, eval=FALSE}
+bnames10 %>% str_detect("A")
+bnames10 %>% str_subset("th")
+bnames10 %>% str_extract("th")
+bnames1000 %>% str_subset("i..i")
+bnamesearly %>% str_subset("e{1,2}z")
+bnames100 %>% str_subset("[A,E,I,O,U]")
+letters %>% str_subset("[^a,e,i,o,u]")
+fruit %>% str_subset("berry|pepper") 
+fruit %>% str_subset("\\ (berry|pepper)")
+fruit %>% str_subset("[^ ](berry|pepper)") 
+fruit %>% str_subset("^a|^e|^i|^o|^u") 
+fruit %>% str_subset("(^a|^e|^i|^o|^u)+.+(a$|e$|i$|o$|u$)")
+fruit %>% str_subset("(^a|^e|^i|^o|^u)|(a$|e$|i$|o$|u$)")
+bnames10 %>% str_remove("a|e|i|o|u")
+bnames10 %>% str_remove_all("a|e|i|o|u")
+knames %>%  str_replace("Kat", "Cat")
+bnames100 %>% tolower() %>% str_subset(("(^.)+.+(\\1$)"))
+people %>%
+  mutate(last_name=str_remove(full_name,", .*"))
+people %>%
+  mutate(last_name=str_replace(full_name, "(.*), .*","\\1"))
+people %>%
+  mutate(first_last=str_replace(full_name,"(.*), (.*)","\\2 \\1"))
+```
+
+
+
+
+
+
+```{r}
+library(Rsubread)
+readCounts <- featureCounts(
+  files=c("/home/ubuntu/LAB3/Assignment_5_Wang.Zun/output/tophat_out-IMB211_All_A01_INTERNODE.fq/accepted_hits_A01.bam",
+    "/home/ubuntu/LAB3/Assignment_5_Wang.Zun/output/tophat_out-R500_All_A01_INTERNODE.fq/accepted_hits_A01.bam"),
+  annot.ext="/home/ubuntu/LAB3/Assignment_5_Wang.Zun/input/Brapa_reference/Brapa_gene_v1.5.gtf", 
+  isGTFAnnotationFile=TRUE,
+  GTF.featureType="CDS", # This depends on GTF file.  Often it would be "exon"
+  GTF.attrType="gene_id"
+  )
+```
+
+
+__Exercise 1__  
+Read the help file for `featureCounts()`.  Be sure to look at the section "Value" where it describes the output.  
+__a__ Provide a line of code that displays the counts of the first 6 genes.  (It is not very interesting because the first genes in the file are on chromosome A03 (strange numbering...) and our bam file only has counts from A01...  )  
+```{r}
+head(readCounts$counts)
+```
+
+__b__ The gene `Bra011030` is on chromosome A01.  What are its read counts in the two files?  (Show code)  
+```{r}
+readCounts$counts["Bra011030",]
+```
+
+__c__ What percentage of reads (from each file) were assigned to a gene?  What percentage were unassigned because they were not located in a gene (aka "Feature")? 
+
+
+```{r}
+#Assigned: 85.9%/86%
+readCounts[["stat"]][[".home.ubuntu.LAB3.Assignment.5.Wang.Zun.output.tophat.out.IMB211.All.A01.INTERNODE.fq.accepted.hits.A01.bam"]][12]
+readCounts[["stat"]][[".home.ubuntu.LAB3.Assignment.5.Wang.Zun.output.tophat.out.R500.All.A01.INTERNODE.fq.accepted.hits.A01.bam"]][12]
+#Due to nonFeature: 13.5%/13.5%
+```
+
+
+__d__ What are 2 possible reasons why there are reads that were mapped to the genome but that cannot be assigned to a gene?  
+
+One reason is because there maybe mutations in the critical ORF identification area so the gene is no longer recognized.
+Another reason can be that the gene was originaly not annotated in the reference, so it is not recognized as well.
+
+**SDR** -0.25 Ambiguous reads
+
+__Exercise 2__  
+Move the downloaded data to your `Assigment_6/input`  directory.
+
+__a__. Create a new object in R called `counts.data` with the internode data.  (Use `read_tsv()` to import)
+```{r}
+counts.data <- read_tsv("/home/ubuntu/LAB3/Assignment_6_Wang.Zun/input/gh_internode_counts2.tsv")
+```
+
+__b__. Check to make sure that the data looks as expected.  (What do you expect and how do you confirm?  Show your commands and output.)
+```{r}
+counts.data <- counts.data %>% filter(gene_id!="*")
+counts.data[is.na(counts.data)] <- 0
+```
+```{r}
+head(counts.data)
+```
+```{r}
+summary(counts.data)
+```
+
+
+__Exercise 3__  
+The column names are too long.  Use the `str_remove()` command to remove the ".1_matched.merged.fq.bam" suffix from each column name.  Although it doesn't matter in this case, surrounding the "pattern" inside of the function `fixed()` would be a good idea,  because "." is a wildcard character.
+```{r}
+colnames(counts.data) <- colnames(counts.data) %>%
+  str_remove_all(fixed(".1_matched.merged.fq.bam"))
+colnames(counts.data)
+```
+
+__Exercise 4__  
+__a.__ Make a histogram of counts for each of the samples. 
+```{r}
+library(ggplot2)
+```
+```{r}
+counts.data2 <- subset(counts.data,select = -gene_id)
+counts.data2
+```
+```{r}
+counts.data.long <- counts.data2 %>%
+  pivot_longer(colnames(counts.data2),names_to = "Samples", values_to = "counts")
+counts.data.long
+```
+
+```{r}
+pl <- counts.data.long %>%
+  ggplot(aes(x = counts))+geom_histogram()+facet_wrap("Samples")
+pl
+```
+
+__b.__ Is the data normally distributed?  Make a new set of histograms after applying an appropriate transformation if needed.
+```{r}
+pl2 <- counts.data.long %>%
+  ggplot(aes(x = counts))+scale_x_log10()+geom_histogram()+facet_wrap("Samples")
+pl2
+```
+
+```{r}
+counts.data <- counts.data[rowSums(counts.data[,-1] > 10) >= 3,]
+```
+
+
+__Hint 1__: _You probably need to `gather` the data into long format.  See the Rice SNP lab and spread and gather tutorial if you need a review_.  __Hint 2__: _You can transform the axes in ggplot by adding_ `scale_x_log10()` or `scale_x_sqrt()` _to the plot.  One of these should be sufficient if you need to transform, but for other ideas see the [Cookbook for R page](http://www.cookbook-r.com/Graphs/Axes_%28ggplot2%29/#axis-transformations-log-sqrt-etc)_.  
+
+**SDR** -0.5 No mention if the data is normally distributed
+
+__Exercise 5:__  
+We expect that read counts, especially from biological replicates, will be highly correlated.  Check to see if this is the case using the `pairs()` function and the `cor()` function.  Explain what each of these functions does and comment on the results.  
+
+__Important Hint:__ _`pairs` is slow on the full dataset.  Try it on the first 1,000 genes.  Do you need to transform to make the pairs output more meaningful?_
+
+__Important Hint2:__ _it will be hard to see the pairs plot in the Rstudio inline display.  Once you have the plot, click the expand to full window icon to display the plot in its own window.  Alternatively, instead of using all columns of data, try it on a smaller number of columns_
+
+__Hint 3:__ _remember that you will need to remove the "gene_id" column before using the data in `pairs` or `cor`_
+```{r}
+counts.data[1-1000,-1] %>%
+  magrittr::add(1)%>%log2()%>%
+  pairs()
+```
+```{r}
+counts.data[1-1000,-1] %>%
+  magrittr::add(1)%>%log2()%>%
+  cor()
+```
+The pair function produces scatterplot for each variable combinations of the data frame. The plots in the corners variance grow very rapidly and scatters more.
+The cor function forms a variance-covariance matrix, using Pearson as method. The covariance decreases rapidly in the corner, corresponds to the pair function plot.
+
+__Exercise 6:__ Next use regular expressions, mutate, and the commands you learned in the stringr tutorial to create three new columns:
+
+1. column "gt" that has either IMB211 or R500, indicating the genotype
+2. column "trt" that indicates the treatment with either "NDP" or "DP"
+3. column "grp" that has gt and trt pasted together with "_" as a separator.  You can use  `str_c()` and the "gt" and "trt" columns for this.
+
+```{r}
+sample.description <- tibble(sample=colnames(counts.data)[-1])
+```
+
+```{r}
+title <- c("IMB211_DP_1_INTERNODE","IMB211_DP_2_INTERNODE","IMB211_DP3_INTERNODE","IMB211_NDP1_INTERNODE","IMB211_NDP_2_INTERNODE","IMB211_NDP_3_INTERNODE","R500_DP_1_INTERNODE","R500_DP_2_INTERNODE","R500_DP_3_INTERNODE","R500_NDP_1_INTERNODE","R500_NDP_2_INTERNODE","R500_NDP_3_INTERNODE")
+sample.description <-sample.description %>%
+  mutate(gt = title %>% str_extract("IMB211|R500"),trt = title %>% str_extract("NDP|DP"),group = str_c(gt,"_",trt))
+sample.description
+```
+```{r}
+sample.description <- sample.description %>%
+  mutate(gt=factor(gt), 
+         trt=factor(trt,levels = c("NDP","DP"))) # setting the levels in this way makes "NDP" the reference  
+
+sample.description
+```
+```{r}
+library(edgeR)
+counts.matrix <- counts.data %>% select(-gene_id) %>% as.matrix()
+rownames(counts.matrix) <- counts.data$gene_id
+
+dge.data <- DGEList(counts=counts.matrix, 
+                    group=sample.description$group)
+dim(dge.data) 
+dge.data <- calcNormFactors(dge.data, method = "TMM")
+dge.data$samples # look at the normalization factors
+```
+```{r}
+plotMDS(dge.data, method = "bcv")
+```
+
+
+
+
+__Exercise 7__  
+Discuss the MDS plot.  Does it give you confidence in the experiment or cause concern?
+
+As the plot shown, there are rather obvious 4 clusters and they match the grouping in the name, so I think the experiment should be fine.
+
+**SDR** -0.5 What are the groupings? How do genotype and treatment split up?
+
+__Exercise 8__  
+To get a graphical idea for what the normalization does, make box plots of the count data for each sample before and after normalization.  Discuss the effect of normalization.
+```{r}
+counts.data.normal <- cpm(dge.data)
+```
+
+__Hint 1__: _log2 transform the counts before plotting.  Add a value of "1" before log2 transforming to avoid having to take the log2 of 0.  Your transformation will look something like this:
+
+```{r}
+counts.data.log <- log2(counts.data[,-1] + 1)
+counts.data.normallog <- log2(counts.data.normal + 1)
+```
+
+__Hint 2__: _If you don't want to bother with gathering before going to ggplot, you can just use the `boxplot()` function and feed it the (transformed) matrix directly._
+
+__Hint 3__: Why do I use `[,-1]` above?  Do you need to use this on `counts.data.normal`?
+
+```{r}
+boxplot(counts.data.log)
+```
+```{r}
+boxplot(counts.data.normallog)
+```
+Normalization decreases the variances between samples, specifically, means are more similar and now the differences are valuable.
+
+
+```{r}
+design <- model.matrix(~gt+trt,data = sample.description)
+rownames(design) <- sample.description$sample
+design
+```
+```{r}
+dge.data <- estimateGLMCommonDisp(dge.data,design,verbose = TRUE)
+
+#Then a trended dispersion based on count level
+dge.data <- estimateGLMTrendedDisp(dge.data,design)
+
+#And lastly we calculate the gene-wise dispersion, using the prior estimates to "squeeze" the dispersion towards the common dispersion.
+dge.data <- estimateGLMTagwiseDisp(dge.data,design)
+
+#We can examine this with a plot
+plotBCV(dge.data)
+```
+```{r}
+fit <- glmFit(dge.data, design)
+gt.lrt <- glmLRT(fit,coef = "gtR500")
+topTags(gt.lrt)
+summary(decideTestsDGE(gt.lrt,p.value=0.01))
+```
+```{r}
+DEgene.gt <- topTags(gt.lrt,n = Inf,p.value = 0.01)$table
+```
+```{r}
+#save to a file
+write.csv(DEgene.gt, "/home/ubuntu/LAB3/Assignment_6_Wang.Zun/output/DEgenes.gt.csv")
+```
+```{r}
+plotDE <- function(genes, dge, sample.description) {
+  require(ggplot2)
+  require(reshape2)
+  tmp.data <- t(log2(cpm(dge[genes,])+1))
+  tmp.data <- merge(tmp.data,sample.description,by.x="row.names",by.y="sample")
+  tmp.data <- melt(tmp.data,value.name="log2_cpm",variable.name="gene")
+  pl <- ggplot(tmp.data,aes(x=gt,y=log2_cpm,fill=trt))
+  pl <- pl + facet_wrap( ~ gene)
+  pl <- pl + ylab("log2(cpm)") + xlab("genotype")
+  pl <- pl + geom_boxplot()
+  pl + theme(axis.text.x  = element_text(angle=45, vjust=1,hjust=1))
+}
+```
+
+```{r}
+plotDE("Bra009785",dge.data,sample.description)
+
+#top 9 genes
+plotDE(rownames(DEgene.gt)[1:9],dge.data,sample.description)
+```
+
+__Exercise 9__  
+__a__.  Find all genes differentially expressed in response to the DP treatment (at a FDR < 0.01).  
+
+```{r}
+fit <- glmFit(dge.data, design)
+gt.lrt <- glmLRT(fit,coef = "trtDP")
+topTags(gt.lrt)
+summary(decideTestsDGE(gt.lrt,p.value=0.01))
+```
+
+__b__.  How many genes are differentially expressed?
+     619.
+
+__c__.  Make a plot of the top 9
+```{r}
+DEgene.gt3 <- topTags(gt.lrt,n = Inf,p.value = 0.01)$table
+```
+```{r}
+#save to a file
+write.csv(DEgene.gt3, "/home/ubuntu/LAB3/Assignment_6_Wang.Zun/output/DEgenes.gt3.csv")
+```
+```{r}
+plotDE(rownames(DEgene.gt3)[1:9],dge.data,sample.description)
+```
+
+
+__Exercise 10__: Gene by treatment interaction    
+```{r}
+design.interaction <- model.matrix(~gt*trt,data = sample.description)
+rownames(design.interaction) <- sample.description$sample
+design.interaction
+```
+
+__a__. Repeat the dispersion estimates and model fit but with the new model.  Show code.  
+```{r}
+dge.data2 <- dge.data
+dge.data2 <- estimateGLMCommonDisp(dge.data2,design.interaction,verbose = TRUE)
+
+#Then a trended dispersion based on count level
+dge.data2 <- estimateGLMTrendedDisp(dge.data2,design.interaction)
+
+#And lastly we calculate the gene-wise dispersion, using the prior estimates to "squeeze" the dispersion towards the common dispersion.
+dge.data2 <- estimateGLMTagwiseDisp(dge.data2,design.interaction)
+
+#We can examine this with a plot
+plotBCV(dge.data2)
+```
+
+__b__. How many genes show a significantly different response to treatment in IMB211 as compared to R500?  Save these genes to a file.  
+```{r}
+fit2 <- glmFit(dge.data2, design.interaction)
+gt.lrt2 <- glmLRT(fit2,coef = "gtR500:trtDP")
+topTags(gt.lrt2)
+summary(decideTestsDGE(gt.lrt2,p.value=0.01))
+```
+```{r}
+DEgene.gt2 <- topTags(gt.lrt2,n = Inf,p.value = 0.01)$table
+```
+```{r}
+#save to a file
+write.csv(DEgene.gt2, "/home/ubuntu/LAB3/Assignment_6_Wang.Zun/output/DEgenes.gt2.csv")
+```
+__c__. Make a plot of the top 9 genes that have a significantly different response to treatment in IMB211 as compared to R500.  
+```{r}
+plotDE(rownames(DEgene.gt2)[1:9],dge.data2,sample.description)
+```
+

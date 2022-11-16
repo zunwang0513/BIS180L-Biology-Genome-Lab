@@ -1,0 +1,179 @@
+---
+title: "Assignment 5_2"
+output: 
+  html_document: 
+    keep_md: yes
+    df_print: paged
+---
+
+**Student Name: Zun Wang** 
+
+**Student ID: 915109847**
+
+Insert answers to R SNP exercises 1 - 4 here.  Submit .Rmd and .html by git.
+
+
+```{r}
+library(tidyverse)
+```
+```{r}
+library(ggplot2)
+```
+```{r}
+vcf.data <- read_tsv("output/SNP_analysis/IMB211_R500.vcf",na = c("","NA","."),comment="#",col_names = FALSE)
+
+vcf.header <- system("grep '#C' output/SNP_analysis/IMB211_R500.vcf",intern = TRUE) #might not work on Windows
+vcf.header
+vcf.header <- vcf.header %>% str_replace("#","") #get rid of the pound sign
+
+vcf.header <- vcf.header %>% str_split(pattern = "\t")
+colnames(vcf.data) <- vcf.header[[1]] #we need the [[1]] because str_split returns a list and we want the first element
+head(vcf.data)
+```
+```{r}
+vcf.data <- vcf.data %>%
+  filter(str_detect(INFO, "TYPE=snp"))
+
+
+vcf.data <- vcf.data %>% separate(IMB211,
+                                  into = paste("IMB211",c("gt","tot.depth","allele.depth", "ref.depth","ref.qual","alt.depth","alt.qual","gt.lik"),sep="_"), # new column names
+                                  sep=":", #separate on ":" 
+                                  convert=TRUE #converts numeric columns to numeric
+)
+```
+```{r}
+vcf.data <- vcf.data %>% separate(R500,
+                                  into = paste("R500",c("gt","tot.depth","allele.depth","ref.depth","ref.qual","alt.depth","alt.qual","gt.lik"),sep="_"), # new column names
+                                  sep=":", #separate on ":" 
+                                  convert=TRUE #converts numeric columns to numeric
+)
+```
+__Exercise 1__  
+To explore the quality of our data, make a histogram of genotype quality.  It is hard to get a feel for the distribution of QUAL scores at the low end of the scale (less than 500) using the default settings, so try making a second histogram that illustrates this region better. (Hint: one option is to subset the data)
+
+```{r}
+pl <- ggplot(data=vcf.data, aes(x=QUAL))
+pl <- pl + geom_histogram()
+pl
+```
+```{r}
+vcf.data2 <- filter(vcf.data, QUAL <= 500)
+pl2 <- ggplot(data = vcf.data2,aes(x=QUAL))
+pl2 <- pl2 + geom_histogram()
+pl2
+```
+ 
+__Exercise 2__  
+We only want to keep positions that have a reasonable probabilty of being correct.  
+
+__a__ At a quality of 40 what is the probability that the SNP call is wrong?
+
+```{r}
+# P = 10 ^ (-4) = 0.0001
+```
+
+__b__ Subset the data to only keep positions where the quality score is 40 or greater.  Put the retained SNPs in an object called `vcf.data.good`
+```{r}
+vcf.data.good <- filter(vcf.data,QUAL >= 40)
+```
+
+__c__ What percentage of SNPs were retained?
+```{r}
+nrow(vcf.data.good) / nrow(vcf.data) * 100
+```
+
+```{r}
+vcf.data.good %>% 
+  filter(IMB211_gt != R500_gt, 
+         IMB211_tot.depth > 20, 
+         R500_tot.depth > 20) %>%
+  select(CHROM, POS, REF, ALT, IMB211_gt, R500_gt)
+```
+
+__Exercise 3:__ What do the "0/0", "0/1", and "1/1" values indicate?  Use IGV to look at a few of the positions above (see lab page) and then explain what "0/0", "0/1", and "1/1" values indicate.
+
+They are the genotype expression. 0/0 is homozygous reference, 1/1 is homozygous alternate, and 0/1 is heterozygous. Specifically, 0 means in this position, the base in the sample is same as reference; while 1 means the same as alternative.
+
+```{r}
+table(vcf.data.good$IMB211_gt)
+table(vcf.data.good$R500_gt)
+vcf.data.good %>% select(IMB211_gt, R500_gt) %>% ftable
+```
+
+
+__Exercise 4__  
+__a__ (From the table generated in the lab), which SNPS would be most useful for a downstream QTL analysis of F2 progeny generated from a cross of IMB211 and R500?  (Ignore the allele categories that have "2", "3", or "4").  _Hint: you want SNPs that will unambiguously distinguish a locus as coming from IMB211 or R500._
+
+The cross between 1/1 and 0/0, while the order of 1/1 and 0/0 assigned to the group does not matter.
+
+
+__b__ Subset the `vcf.data.good` data frame so that you only have these SNPs.  Place the results in `vcf.data.good.F2`
+
+```{r}
+vcf.data.good.F2 <- filter(vcf.data.good, (IMB211_gt == "1/1" & R500_gt == "0/0")|(IMB211_gt == "0/0" & R500_gt == "1/1") )
+vcf.data.good.F2
+```
+
+__c__ How many SNPS are retained?
+
+15000
+
+__Exercise 5__  
+__a__ Using the high quality F2 SNP list from Exercise 4 (`vcf.data.good.F2`), for each SNP plot its position on the chromosome (x axis), and total read depth (R500 and IMB211 combined) (y axis). 
+
+```{r}
+vcf.data.good.F2["totdepth"] <- vcf.data.good.F2$R500_tot.depth+vcf.data.good.F2$IMB211_tot.depth
+pl3 <- ggplot(vcf.data.good.F2,aes(x = POS,y = totdepth))+geom_point()
+pl3
+```
+
+__Optional__: color each SNP based on the percentage of reads that are R500. (optional part not graded).
+```{r}
+vcf.data.good.F2["R500perc"] <- vcf.data.good.F2$R500_tot.depth/vcf.data.good.F2$totdepth
+pl4 <- ggplot(vcf.data.good.F2,aes(x = POS,y = totdepth,color = R500perc))+geom_point()
+pl4
+```
+
+
+__b__ Use the help function to learn about `xlim()`.  Use this function to plot only the region betweeen 20,000,000 and 25,000,000 bp.  Why might there be gaps with no SNPs? 
+```{r}
+pl5 <- pl4 + xlim(20000000,25000000)
+pl5
+```
+
+
+__For Fun (??)--not graded--__  
+Plot the number of each type of base change (A->G, etc).  Are there differences?  Is this expected?
+```{r}
+baseChange <- data.frame(matrix(nrow = 12,ncol = 0))
+baseChange["base_change"] <- c("AtoT","TtoA","AtoC","CtoA","AtoG","GtoA","TtoC","CtoT","TtoG","GtoT","CtoG","GtoC")
+
+baseChange.ac <- select(vcf.data.good.F2,REF,ALT)
+baseChange.ac$REF <- as.character(baseChange.ac$REF)
+baseChange.ac$ALT <- as.character(baseChange.ac$ALT)
+df_a <- baseChange.ac %>%
+  mutate(REF_new=strsplit(REF, "")) %>% 
+  unnest(REF_new)
+baseChange.ac<- baseChange.ac %>%
+  mutate(ALT=strsplit(ALT, "")) %>% 
+  unnest(ALT)
+baseChange.ac$REF <- df_a$REF_new
+baseChange.ac["ALTnum"] <- 1
+baseChange.ac["REFnum"] <- 1
+
+baseChange.ac$REFnum[which(baseChange.ac$REF=="T")] <- 2
+baseChange.ac$REFnum[which(baseChange.ac$REF=="C")] <- 4
+baseChange.ac$REFnum[which(baseChange.ac$REF=="G")] <- 8
+baseChange.ac$ALTnum[which(baseChange.ac$ALT=="T")] <- 2
+baseChange.ac$ALTnum[which(baseChange.ac$ALT=="C")] <- 4
+baseChange.ac$ALTnum[which(baseChange.ac$ALT=="G")] <- 8
+baseChange.ac["diff"]<-baseChange.ac$REFnum - baseChange.ac$ALTnum
+baseChange.ac
+baseChange["count"]<-c(nrow(subset(baseChange.ac,diff == -1)),nrow(subset(baseChange.ac,diff == 1)),nrow(subset(baseChange.ac,diff == -3)),nrow(subset(baseChange.ac,diff == 3)),nrow(subset(baseChange.ac,diff == -7)),nrow(subset(baseChange.ac,diff == 7)),nrow(subset(baseChange.ac,diff == -2)),nrow(subset(baseChange.ac,diff == 2)),nrow(subset(baseChange.ac,diff == -6)),nrow(subset(baseChange.ac,diff == 6)),nrow(subset(baseChange.ac,diff == -4)),nrow(subset(baseChange.ac,diff == 4)))
+baseChange
+```
+```{r}
+pl6 <- ggplot(baseChange,aes(x = base_change,y = count,fill = base_change))+geom_bar(stat = "identity")
+pl6
+```
+

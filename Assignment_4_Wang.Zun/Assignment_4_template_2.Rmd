@@ -1,0 +1,195 @@
+---
+title: "Assignment 4, Part II"
+output: 
+  html_document:
+    keep_md: true
+    df_print: paged
+---
+__Name:__
+
+__Student ID:__
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, max.print=100)
+```
+
+## Assignment 4: Rice SNPs and GWAS
+
+Remember to include the relevant code from the lab page in this file so that this file will knit.
+
+**Exercise 0:** Be sure that your final knitted file has good formatting.  Make sure that you are using informative variable names.---
+title: "Rice GWAS"
+layout: lab
+tags:
+- R
+- SNPs
+hidden: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE)
+```
+
+
+**Exercise 7:** What Trait did you choose?
+
+* Plot your chosen trait data
+  * as a **single histogram** for all of the data
+  * as **separate histograms** for each of the 4 population assignments made by fastStructure
+  * as a **boxplot** separated by population assignments made by fastStructure. 
+* Based on these histograms do you think that your trait varies by population? 
+* **optional** Try using the "violin" geom.  
+  
+*Hint:* you will need to use a different binwidth than I used with Seed.length.width (or don't specify it at all and let R choose the default).
+
+*Hint:* the relevant column name for population is "assignedPop".  
+
+
+**Exercise 8:** 
+
+* Obtain the mean of your trait for each of the four fastStructure populations.
+* Perform an ANOVA for your trait to test if it varies significantly by fastStructure population.  Show your code, the ANOVA output, and provide an interpretation.
+* Discuss: Do your results suggest a problem for GWAS?
+
+
+**Exercise 9:** Complete the code below to generate a GM object like the one above.  Note that "chr" and "pos" should be numeric.  _Hint:_ Look at help for the `separate` command.  You will need to specify the `into`, `sep`, `convert` and `remove` arguments.
+
+```{r, eval=TRUE}
+# GAPIT is one of the rare cases where tibbles and data frames are not interchangeable
+# So be sure to used "data.frame()" rather than "tibble()"
+GM <- data.frame(SNP=colnames(GD)[-1]) %>%
+  separate(SNP, <FILL THIS IN> ) 
+head(GM)
+```
+
+Because GAPIT requires a data frame, not a tibble, we convert after selecting the phenotype
+
+Fill in the trait you chose in the code below and run the code.  What trait did you pick?
+
+
+```{r, eval=FALSE}
+Y <- pheno.geno.pca.pop %>%
+  dplyr::select(ID, <YOUR_TRAIT_HERE>) %>%  # remove the "<" and ">"
+  as.data.frame()
+```
+
+#### No structure correction
+
+__I am going to leave the GAPIT code in the template__.  Note that I have the chunk option set to eval=FALSE.  This ensures that the code will not run when you knit.__  You will need to run it before knitting.
+
+```{r, eval=FALSE}
+if(!dir.exists("../output/GAPIT_GLM_no_Q")) dir.create("../output/GAPIT_GLM_no_Q")
+setwd("../output/GAPIT_GLM_no_Q")
+
+gapout <- GAPIT(
+  Y=Y,
+  GD=GD,
+  GM=GM,
+  model="GLM"
+  )
+```
+
+
+#### Q matrix
+
+```{r, eval=FALSE}
+if(!dir.exists("../output/GAPIT_GLM_Q")) dir.create("../output/GAPIT_GLM_Q")
+setwd("../output/GAPIT_GLM_Q")
+
+Q <- pheno.geno.pca.pop %>%
+  dplyr::select(ID, pop2, pop3, pop4) %>% # leave one pop out...it is used as the base level.
+  as.data.frame()
+
+gapout <- GAPIT(
+  Y=Y,
+  GD=GD,
+  GM=GM,
+  CV=Q,
+  model="GLM")
+```
+
+#### PCA matrix
+
+```{r eval=FALSE}
+if(!dir.exists("../output/GAPIT_GLM_PCA")) dir.create("../output/GAPIT_GLM_PCA")
+setwd("../output/GAPIT_GLM_PCA")
+
+QPC <- PCs %>% as.data.frame()
+
+system.time(gapout <- GAPIT(
+  Y=Y,
+  GD=GD,
+  GM=GM,
+  CV=QPC,
+  model="GLM"
+  ))
+```
+
+**Exercise 10:** Compare the Q-Q and Genome-wise Manhattan plots of the no correction, Q matrix, and PCA matrix runs.  (You will find the PDFs in the respective output folders).  Did the corrections make a difference?  If so, which one worked better?  How did this effect the number of "significant" SNPs in the Manhattan plot?  (In the Manhattan plot the horizontal line represents the significance threshold.  If you don't see a line, nothing was significant).
+
+**Include your Q-Q and Genome-wise Manhattan plots in your Rmd file**.  You will need to convert them to png or jpeg, see below.
+
+
+#### K Matrix
+
+```{r, eval=FALSE}
+if(!dir.exists("../output/GAPIT_CMLM_no_Q")) dir.create("../output/GAPIT_CMLM_no_Q")
+setwd("../output/GAPIT_CMLM_no_Q")
+
+gapout <- GAPIT(
+  Y=Y,
+  GD=GD,
+  GM=GM,
+  group.from = 1,
+  group.to = 413,
+  model="CMLM"
+  )
+```
+
+**Exercise 11:** Compare the Q-Q plot from the K matrix run to the best one from above.  Is the K matrix more or less effective at controlling for population structure? **Include the Q-Q and Genome-wise Manhattan plot in your Rmd file**.
+
+#### CMLM with Q and K
+
+We can combine K and either Q or PCA matrices.  Choose either "Q" or "QPC" based on whichever gave better results above and modify the code below.
+
+```{r, eval=FALSE}
+if(!dir.exists("../output/GAPIT_CMLM")) dir.create("../output/GAPIT_CMLM")
+setwd("../output/GAPIT_CMLM")
+
+gapout <- GAPIT(
+  Y=Y,
+  GD=GD,
+  GM=GM,
+  CV=, ## either Q or QPC
+  group.from=1,
+  group.to=413,
+  model="CMLM"
+  )
+```
+
+**Exercise 12:**
+Does this do any better than the best GLM model with Q or QPC? Comment on both the QQ and Manhattan plots. **Include the Q-Q and Genome-wise Manhattan plot in your Rmd file**.
+
+#### Blink
+
+Finally let's try the mystery method, "Blink"
+
+```{r, eval=FALSE}
+if(!dir.exists("../output/GAPIT_Blink")) dir.create("../output/GAPIT_Blink")
+setwd("../output/GAPIT_Blink")
+
+gapout <- GAPIT(
+  Y=Y,
+  GD=GD,
+  GM=GM,
+  model="Blink"
+  )
+```
+
+**Exercise 13:** How does Blink compare to the other methods?  Again, comment on both the QQ and Manhattan plots. **Include the Q-Q and Genome-wise Manhattan plot in your Rmd file**.
+
+
+**Exercise 14:** Load in the SNP list from whichever method best controlled population structure.   The file ends with `GWAS.Results.csv` and is in the relevant output folder. Use `head()` to show the top 10 SNPs.
+
+**Exercise 15:** Look for genes close to your SNP at the [rice genome browser](http://rice.plantbiology.msu.edu/cgi-bin/gbrowse/rice/).  Pick a significant SNP from your analysis and enter its chromosome and position in the search box.  The browser wants you to enter a start and stop position, so for example, you should enter "Chr3:30449857..30449857" and then choose "show 20kb" from the pulldown menu on the right hand side.  Report the SNP you chose and the three closest genes.  These are candidate genes for determining the phenotype of your trait of interest in the rice population.  Briefly discuss these genes as possible candidates for the GWAS peak.  __Include a Screenshot of the genome browser in your answer__
+
